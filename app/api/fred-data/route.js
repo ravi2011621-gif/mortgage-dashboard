@@ -69,47 +69,118 @@ async function fetchSeries(seriesId, observationStart) {
     .filter((item) => Number.isFinite(item.value));
 }
 
-function computeInflationYoY(inflationSeries) {
-  const monthlyMap = new Map(
-    inflationSeries.map((item) => [item.date.slice(0, 7), item.value])
-  );
+function toWeekly(series) {
+  const buckets = new Map();
 
-  return inflationSeries
+  for (const point of series) {
+    const d = new Date(point.date);
+    if (Number.isNaN(d.getTime())) continue;
+
+    const utc = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const day = utc.getUTCDay();
+    utc.setUTCDate(utc.getUTCDate() - day);
+    const weekKey = utc.toISOString().slice(0, 10);
+
+    buckets.set(weekKey, point.value);
+  }
+
+  return [...buckets.entries()]
+    .map(([date, value]) => ({ date, value }))
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+}
+
+function computeInflationYoY(monthlySeries) {
+  const byMonth = new Map(monthlySeries.map((item) => [item.date.slice(0, 7), item.value]));
+
+  return monthlySeries
     .map((item) => {
       const d = new Date(item.date);
-      d.setFullYear(d.getFullYear() - 1);
-      const base = monthlyMap.get(d.toISOString().slice(0, 7));
-      if (base == null) return null;
+      d.setUTCFullYear(d.getUTCFullYear() - 1);
+      const priorKey = d.toISOString().slice(0, 7);
+      const prior = byMonth.get(priorKey);
+
+      if (prior == null) return null;
 
       return {
         date: item.date,
-        value: +(((item.value - base) / base) * 100).toFixed(2),
+        value: +(((item.value - prior) / prior) * 100).toFixed(2),
       };
     })
     .filter(Boolean);
 }
 
-function mergeSeries(seriesMap) {
-  const map = new Map();
+function buildWeeklyTimeline(observationStart) {
+  const start = new Date(observationStart);
+  const end = new Date();
 
-  const add = (key, arr) => {
-    arr.forEach((point) => {
-      const labelDate = new Date(point.date);
-      const row = map.get(point.date) ?? {
+  const startUtc = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate()));
+  const endUtc = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate()));
+
+  const day = startUtc.getUTCDay();
+  startUtc.setUTCDate(startUtc.getUTCDate() - day);
+
+  const timeline = [];
+  const cursor = new Date(startUtc);
+
+  while (cursor <= endUtc) {
+    timeline.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 7);
+  }
+
+  return timeline;
+}
+
+function alignToTimeline(timeline, weeklySeries) {
+  const map = new Map(weeklySeries.map((item) => [item.date, item.value]));
+  let last = null;
+
+  return timeline.map((date) => {
+    const current = map.has(date) ? map.get(date) : null;
+    if (current != null) last = current;
+    return { date, value: current != null ? current : last };
+  });
+}
+
+function mergeSeriesToRows(seriesMap) {
+  const rowMap = new Map();
+
+  for (const [key, arr] of Object.entries(seriesMap)) {
+    for (const point of arr) {
+      const dateObj = new Date(point.date);
+      const label = dateObj.toLocaleDateString(undefined, {
+        month: "short",
+        year: "2-digit",
+      });
+
+      const row = rowMap.get(point.date) || {
         date: point.date,
-        label: labelDate.toLocaleDateString(undefined, {
-          month: "short",
-          year: "2-digit",
-        }),
+        label,
       };
+
       row[key] = point.value;
-      map.set(point.date, row);
-    });
-  };
+      rowMap.set(point.date, row);
+    }
+  }
 
-  Object.entries(seriesMap).forEach(([key, arr]) => add(key, arr));
+  const rows = [...rowMap.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
 
-  return [...map.values()].sort((a, b) => new Date(a.date) - new Date(b.date));
+  return rows.map((row) => {
+    const mortgageSpread =
+      row.conforming30 != null && row.treasury10 != null
+        ? +(row.conforming30 - row.treasury10).toFixed(2)
+        : null;
+
+    const curveSpread =
+      row.treasury10 != null && row.treasury2 != null
+        ? +(row.treasury10 - row.treasury2).toFixed(2)
+        : null;
+
+    return {
+      ...row,
+      mortgageSpread,
+      curveSpread,
+    };
+  });
 }
 
 export async function GET(request) {
@@ -119,24 +190,24 @@ export async function GET(request) {
     const observationStart = getObservationStart(range);
 
     const [
-      conforming30,
-      conforming15,
-      fha30,
-      va30,
-      jumbo30,
-      heloc,
-      treasury10,
-      treasury2,
-      fedFunds,
-      unemployment,
-      inflation,
+      conforming30Raw,
+      conforming15Raw,
+      fha30Raw,
+      va30Raw,
+      jumbo30Raw,
+      helocRaw,
+      treasury10Raw,
+      treasury2Raw,
+      fedFundsRaw,
+      unemploymentRaw,
+      inflationRaw,
     ] = await Promise.all([
       fetchSeries(SERIES.conforming30, observationStart),
       fetchSeries(SERIES.conforming15, observationStart),
       fetchSeries(SERIES.fha30, observationStart),
       fetchSeries(SERIES.va30, observationStart),
       fetchSeries(SERIES.jumbo30, observationStart),
-      fetchSeries(SERIES.heloc, observationStart),
+      fetchSeries(SERIES.heloc, observationStart).catch(() => []),
       fetchSeries(SERIES.treasury10, observationStart),
       fetchSeries(SERIES.treasury2, observationStart),
       fetchSeries(SERIES.fedFunds, observationStart),
@@ -144,9 +215,33 @@ export async function GET(request) {
       fetchSeries(SERIES.inflation, observationStart),
     ]);
 
-    const inflationYoY = computeInflationYoY(inflation);
+    const inflationYoYRaw = computeInflationYoY(inflationRaw);
 
-    const merged = mergeSeries({
+    const timeline = buildWeeklyTimeline(observationStart);
+
+    const conforming30 = alignToTimeline(timeline, toWeekly(conforming30Raw));
+    const conforming15 = alignToTimeline(timeline, toWeekly(conforming15Raw));
+    const fha30 = alignToTimeline(timeline, toWeekly(fha30Raw));
+    const va30 = alignToTimeline(timeline, toWeekly(va30Raw));
+    const jumbo30 = alignToTimeline(timeline, toWeekly(jumbo30Raw));
+    const treasury10 = alignToTimeline(timeline, toWeekly(treasury10Raw));
+    const treasury2 = alignToTimeline(timeline, toWeekly(treasury2Raw));
+    const fedFunds = alignToTimeline(timeline, toWeekly(fedFundsRaw));
+    const unemployment = alignToTimeline(timeline, toWeekly(unemploymentRaw));
+    const inflationYoY = alignToTimeline(timeline, toWeekly(inflationYoYRaw));
+
+    let heloc = alignToTimeline(timeline, toWeekly(helocRaw));
+
+    const helocHasData = heloc.some((x) => x.value != null);
+
+    if (!helocHasData) {
+      heloc = conforming30.map((x) => ({
+        date: x.date,
+        value: x.value != null ? +(x.value + 1.5).toFixed(2) : null,
+      }));
+    }
+
+    const rows = mergeSeriesToRows({
       conforming30,
       conforming15,
       fha30,
@@ -163,8 +258,9 @@ export async function GET(request) {
     return NextResponse.json({
       ok: true,
       range,
-      data: merged,
+      helocSource: helocHasData ? "fred" : "modeled_fallback",
       fetchedAt: new Date().toISOString(),
+      data: rows,
     });
   } catch (error) {
     return NextResponse.json(
