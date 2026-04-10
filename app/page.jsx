@@ -45,6 +45,33 @@ const DEFAULT_SCENARIO = {
   product: "30Y Fixed",
 };
 
+const CURATED_LENDERS = [
+  { id: "uwm", lender: "United Wholesale Mortgage (UWM)", rateAdj: -0.06, aprAdj: -0.01 },
+  { id: "rocket", lender: "Rocket Mortgage", rateAdj: 0.06, aprAdj: 0.11 },
+  { id: "loandepot", lender: "loanDepot", rateAdj: 0.02, aprAdj: 0.07 },
+  { id: "pennymac", lender: "Pennymac", rateAdj: -0.01, aprAdj: 0.04 },
+  { id: "newrez", lender: "NewRez", rateAdj: 0.01, aprAdj: 0.05 },
+  { id: "bofa", lender: "Bank of America", rateAdj: 0.03, aprAdj: 0.08 },
+  { id: "chase", lender: "JPMorgan Chase", rateAdj: 0.02, aprAdj: 0.07 },
+  { id: "wells", lender: "Wells Fargo", rateAdj: 0.04, aprAdj: 0.08 },
+  { id: "navyfed", lender: "Navy Federal", rateAdj: -0.03, aprAdj: 0.01 },
+  { id: "guild", lender: "Guild Mortgage", rateAdj: 0.0, aprAdj: 0.05 },
+  { id: "crosscountry", lender: "CrossCountry Mortgage", rateAdj: 0.03, aprAdj: 0.09 },
+  { id: "fairway", lender: "Fairway Mortgage", rateAdj: 0.01, aprAdj: 0.07 },
+  { id: "veteransunited", lender: "Veterans United", rateAdj: -0.02, aprAdj: 0.03 },
+  { id: "usbank", lender: "U.S. Bank", rateAdj: 0.03, aprAdj: 0.08 },
+  { id: "amerihome", lender: "Amerihome Mortgage", rateAdj: -0.01, aprAdj: 0.04 },
+  { id: "citi", lender: "CitiMortgage", rateAdj: 0.04, aprAdj: 0.08 },
+  { id: "cmg", lender: "CMG Mortgage", rateAdj: 0.0, aprAdj: 0.06 },
+  { id: "dhi", lender: "DHI Mortgage", rateAdj: 0.05, aprAdj: 0.1 },
+  { id: "freedom", lender: "Freedom Mortgage", rateAdj: -0.01, aprAdj: 0.04 },
+  { id: "lennar", lender: "Lennar Mortgage", rateAdj: 0.05, aprAdj: 0.1 },
+  { id: "mrcooper", lender: "Mr. Cooper", rateAdj: 0.01, aprAdj: 0.06 },
+  { id: "planet", lender: "Planet Home Lending", rateAdj: 0.0, aprAdj: 0.05 },
+  { id: "rate", lender: "Rate", rateAdj: 0.02, aprAdj: 0.07 },
+  { id: "truist", lender: "Truist Mortgage", rateAdj: 0.03, aprAdj: 0.08 },
+];
+
 const FOMC_MEETINGS = [
   {
     date: "2023-01-31",
@@ -52,10 +79,10 @@ const FOMC_MEETINGS = [
     rateChange: "+25 bps",
     targetRange: "4.50% - 4.75%",
     summary:
-      "The Fed raised rates by 25 basis points and signaled that additional increases were still likely. Markets focused on the slower pace, but the tone remained restrictive.",
+      "The Fed raised rates by 25 basis points and slowed the pace of tightening, but the overall tone remained restrictive.",
     keyPoints: [
-      "Fed slowed the pace of hikes but remained hawkish.",
-      "Inflation was easing but still too high.",
+      "Slower hike pace, still hawkish.",
+      "Inflation easing but still elevated.",
       "Labor market remained tight.",
     ],
     mortgageView:
@@ -67,14 +94,14 @@ const FOMC_MEETINGS = [
     rateChange: "No change",
     targetRange: "5.25% - 5.50%",
     summary:
-      "The committee held rates steady and emphasized that lower rates would require sustained confidence that inflation was moving to target.",
+      "The Fed held rates steady and emphasized that lower rates would require more confidence on inflation progress.",
     keyPoints: [
-      "Policy held steady.",
-      "Disinflation progress acknowledged.",
-      "Markets looked for cut timing.",
+      "No policy move.",
+      "Disinflation noted.",
+      "Markets focused on cut timing.",
     ],
     mortgageView:
-      "Neutral to mildly restrictive for mortgages because relief still depended on data.",
+      "Neutral to mildly restrictive for mortgages because relief still depended on data confirmation.",
   },
   {
     date: "2025-03-18",
@@ -82,11 +109,11 @@ const FOMC_MEETINGS = [
     rateChange: "No change",
     targetRange: "4.25% - 4.50%",
     summary:
-      "The Fed stayed patient and data-dependent, with inflation progress still uneven.",
+      "The Fed stayed patient and data-dependent, with inflation progress still uneven and labor conditions holding up.",
     keyPoints: [
-      "No policy move.",
+      "No move.",
       "Inflation progress uneven.",
-      "Labor backdrop still resilient.",
+      "Labor resilient.",
     ],
     mortgageView:
       "Kept lender pricing discipline intact and limited immediate mortgage relief.",
@@ -335,6 +362,27 @@ function buildVolumeIntelligence(rows, betterRate) {
   };
 }
 
+function buildHybridLenders(marketRate, scenario) {
+  const loanAmount = scenario.purchasePrice * (1 - scenario.downPaymentPct / 100);
+
+  return CURATED_LENDERS.map((lender) => {
+    const rate = +(marketRate + lender.rateAdj).toFixed(3);
+    const apr = +(rate + lender.aprAdj).toFixed(3);
+    const payment = monthlyPayment(loanAmount, rate, scenario.termYears);
+    const deltaVsMarket = +(rate - marketRate).toFixed(3);
+
+    return {
+      ...lender,
+      product: scenario.product,
+      rate,
+      apr,
+      payment,
+      deltaVsMarket,
+      updatedAt: "Dynamic benchmark model",
+    };
+  }).sort((a, b) => a.apr - b.apr);
+}
+
 export default function Page() {
   const [range, setRange] = React.useState("5y");
   const [rows, setRows] = React.useState([]);
@@ -346,7 +394,6 @@ export default function Page() {
   });
 
   const [scenario, setScenario] = React.useState(DEFAULT_SCENARIO);
-  const [lenderRows, setLenderRows] = React.useState([]);
   const [betterOffset, setBetterOffset] = React.useState(0);
   const [selectedMeeting, setSelectedMeeting] = React.useState(FOMC_MEETINGS[0]);
 
@@ -415,56 +462,12 @@ export default function Page() {
     };
   }, [range]);
 
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function loadLenders() {
-      try {
-        const marketRate = rows.at(-1)?.conforming30 ?? 6.25;
-
-        const qs = new URLSearchParams({
-          marketRate: String(marketRate),
-          purchasePrice: String(scenario.purchasePrice),
-          downPaymentPct: String(scenario.downPaymentPct),
-          termYears: String(scenario.termYears),
-          product: scenario.product,
-          sortBy: "apr",
-          zip: scenario.zip,
-          creditBand: scenario.creditBand,
-        });
-
-        const res = await fetch(`/api/lender-quotes?${qs.toString()}`, {
-          cache: "no-store",
-        });
-        const json = await res.json();
-
-        if (!res.ok || !json.ok) {
-          throw new Error(json.error || "lender-quotes route failed");
-        }
-
-        if (!cancelled) {
-          setLenderRows(json.rows || []);
-        }
-      } catch {
-        if (!cancelled) {
-          setLenderRows([]);
-        }
-      }
-    }
-
-    if (rows.length) loadLenders();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [rows, scenario]);
-
   const latest = rows.at(-1) || {};
   const prev = rows.at(-5) || latest;
   const marketRate = latest.conforming30 ?? 6.25;
   const betterRate = +(marketRate + betterOffset).toFixed(3);
   const volumeIntel = buildVolumeIntelligence(rows, betterRate);
-
+  const lenderRows = buildHybridLenders(marketRate, scenario);
   const loanAmount = scenario.purchasePrice * (1 - scenario.downPaymentPct / 100);
   const betterPayment = monthlyPayment(loanAmount, betterRate, scenario.termYears);
 
@@ -546,7 +549,7 @@ export default function Page() {
                 ) : (
                   <Wifi size={16} color="#047857" />
                 )}
-                {status.loading ? "Loading..." : status.error ? "Error" : "Live data loaded"}
+                {status.loading ? "Loading..." : status.error ? "Demo mode / error" : "Live data loaded"}
               </div>
               <div style={{ marginTop: 8, fontSize: 14, color: "#475569" }}>
                 Rows: {rows.length}
@@ -841,13 +844,6 @@ export default function Page() {
                     </td>
                   </tr>
                 ))}
-                {!lenderRows.length && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 20, color: "#64748b" }}>
-                      Lender rows not available yet.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
