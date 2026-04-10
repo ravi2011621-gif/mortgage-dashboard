@@ -137,7 +137,10 @@ function alignToTimeline(timeline, weeklySeries) {
   return timeline.map((date) => {
     const current = map.has(date) ? map.get(date) : null;
     if (current != null) last = current;
-    return { date, value: current != null ? current : last };
+    return {
+      date,
+      value: current != null ? current : last,
+    };
   });
 }
 
@@ -216,7 +219,6 @@ export async function GET(request) {
     ]);
 
     const inflationYoYRaw = computeInflationYoY(inflationRaw);
-
     const timeline = buildWeeklyTimeline(observationStart);
 
     const conforming30 = alignToTimeline(timeline, toWeekly(conforming30Raw));
@@ -231,7 +233,6 @@ export async function GET(request) {
     const inflationYoY = alignToTimeline(timeline, toWeekly(inflationYoYRaw));
 
     let heloc = alignToTimeline(timeline, toWeekly(helocRaw));
-
     const helocHasData = heloc.some((x) => x.value != null);
 
     if (!helocHasData) {
