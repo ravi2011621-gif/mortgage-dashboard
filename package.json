@@ -1,5 +1,5 @@
 {
-  "name": "mortgage-macro-dashboard",
+  "name": "mortgage-dashboard",
   "private": true,
   "scripts": {
     "dev": "next dev",
