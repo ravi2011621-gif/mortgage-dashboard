@@ -1,6 +1,5 @@
 export const metadata = {
-  title: "Mortgage Macro Dashboard",
-  description: "US mortgage and macro dashboard"
+  title: "Mortgage Dashboard",
 };
 
 export default function RootLayout({ children }) {
