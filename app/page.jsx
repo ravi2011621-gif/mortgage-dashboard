@@ -270,6 +270,12 @@ export default function Page() {
   const treasuryStats10 = buildStats(treasuryRows, "treasury10");
   const treasuryStats2 = buildStats(treasuryRows, "treasury2");
   const spreadStats = buildStats(spreadRows, "mortgageSpread");
+  const mbsCondition =
+  spreadStats.change == null
+    ? "Neutral"
+    : spreadStats.change < 0
+    ? "Positive"
+    : "Negative";
   const mortgageStats30 = buildStats(mortgageRows, "conforming30");
   const helocStats = buildStats(mortgageRows, "heloc");
 
@@ -499,6 +505,10 @@ export default function Page() {
                     ? "Improving"
                     : "Worsening",
               },
+              {
+  label: "MBS condition",
+  value: mbsCondition,
+},
             ]}
           />
         </div>
