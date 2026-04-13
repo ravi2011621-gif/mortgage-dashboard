@@ -416,9 +416,25 @@ export default function Page() {
             change={null}
           />
         </div>
+        <div style={{ marginTop: 16, ...cardStyle(), padding: 14 }}>
+  <div style={{ fontWeight: 700 }}>Inflation Insight</div>
 
-        <h2 style={{ fontSize: 34, margin: "28px 0 10px" }}>Treasury</h2>
-        <ChartControls
+  <div style={{ marginTop: 6, fontSize: 14 }}>
+    Trend: {forwardSignals?.inflation?.trend || "—"}
+  </div>
+
+  <div style={{ marginTop: 6, fontSize: 14 }}>
+    Impact:{" "}
+    {forwardSignals?.inflation?.trend === "falling"
+      ? "Positive for mortgage rates"
+      : forwardSignals?.inflation?.trend === "rising"
+      ? "Negative for mortgage rates"
+      : "Neutral"}
+  </div>
+</div>
+
+<h2 style={{ fontSize: 34, margin: "28px 0 10px" }}>Treasury</h2>
+<ChartControls
           title="treasury"
           range={ranges.treasury}
           setRange={(v) => setRanges((p) => ({ ...p, treasury: v }))}
