@@ -44,8 +44,9 @@ function cardStyle() {
   };
 }
 
-function summaryCard(title, value, change) {
+function SummaryCard({ title, value, change }) {
   const positive = Number.isFinite(change) ? change >= 0 : null;
+
   return (
     <div style={cardStyle()}>
       <div style={{ fontSize: 13, color: "#6b7280", fontWeight: 600 }}>{title}</div>
@@ -72,16 +73,19 @@ function summaryCard(title, value, change) {
 function getStartDate(range) {
   const now = new Date();
   const d = new Date(now);
+
   if (range === "6m") d.setMonth(now.getMonth() - 6);
   if (range === "1y") d.setFullYear(now.getFullYear() - 1);
   if (range === "3y") d.setFullYear(now.getFullYear() - 3);
   if (range === "5y") d.setFullYear(now.getFullYear() - 5);
   if (range === "10y") d.setFullYear(now.getFullYear() - 10);
+
   return d;
 }
 
 function filterRows(rows, range, custom) {
   if (!Array.isArray(rows)) return [];
+
   if (range !== "custom") {
     const start = getStartDate(range);
     return rows.filter((r) => new Date(r.date) >= start);
@@ -221,6 +225,7 @@ function StatsPanel({ items }) {
 
 export default function Page() {
   const [rows, setRows] = React.useState([]);
+  const [forwardSignals, setForwardSignals] = React.useState({});
   const [status, setStatus] = React.useState("loading");
 
   const [ranges, setRanges] = React.useState({
@@ -240,8 +245,11 @@ export default function Page() {
       try {
         const res = await fetch("/api/fred-data?range=15y", { cache: "no-store" });
         const json = await res.json();
+
         if (!json.ok) throw new Error("Bad response");
+
         setRows(Array.isArray(json.data) ? json.data : []);
+        setForwardSignals(json.forwardSignals || {});
         setStatus("live");
       } catch {
         setStatus("error");
@@ -254,15 +262,6 @@ export default function Page() {
   const latest = rows.at(-1) || {};
   const prev = rows.at(-5) || latest;
 
-  const inflationValue =
-    latest.inflationYoY != null && Number.isFinite(Number(latest.inflationYoY))
-      ? latest.inflationYoY
-      : null;
-  const inflationPrev =
-    prev.inflationYoY != null && Number.isFinite(Number(prev.inflationYoY))
-      ? prev.inflationYoY
-      : null;
-
   const treasuryRows = filterRows(rows, ranges.treasury, customRanges.treasury);
   const spreadRows = filterRows(rows, ranges.spread, customRanges.spread);
   const mortgageRows = filterRows(rows, ranges.mortgage, customRanges.mortgage);
@@ -270,14 +269,15 @@ export default function Page() {
   const treasuryStats10 = buildStats(treasuryRows, "treasury10");
   const treasuryStats2 = buildStats(treasuryRows, "treasury2");
   const spreadStats = buildStats(spreadRows, "mortgageSpread");
-  const mbsCondition =
-  spreadStats.change == null
-    ? "Neutral"
-    : spreadStats.change < 0
-    ? "Positive"
-    : "Negative";
   const mortgageStats30 = buildStats(mortgageRows, "conforming30");
   const helocStats = buildStats(mortgageRows, "heloc");
+
+  const mbsCondition =
+    spreadStats.change == null
+      ? "Neutral"
+      : spreadStats.change < 0
+      ? "Positive"
+      : "Negative";
 
   const marketRate = latest.conforming30 || 6;
   const lenders = buildLenders(marketRate);
@@ -351,35 +351,39 @@ export default function Page() {
             marginBottom: 28,
           }}
         >
-          {summaryCard(
-            "30Y",
-            latest.conforming30,
-            latest.conforming30 != null && prev.conforming30 != null
-              ? latest.conforming30 - prev.conforming30
-              : null
-          )}
-          {summaryCard(
-            "15Y",
-            latest.conforming15,
-            latest.conforming15 != null && prev.conforming15 != null
-              ? latest.conforming15 - prev.conforming15
-              : null
-          )}
-          {summaryCard(
-            "FHA",
-            latest.fha30,
-            latest.fha30 != null && prev.fha30 != null ? latest.fha30 - prev.fha30 : null
-          )}
-          {summaryCard(
-            "VA",
-            latest.va30,
-            latest.va30 != null && prev.va30 != null ? latest.va30 - prev.va30 : null
-          )}
-          {summaryCard(
-            "HELOC",
-            latest.heloc,
-            latest.heloc != null && prev.heloc != null ? latest.heloc - prev.heloc : null
-          )}
+          <SummaryCard
+            title="30Y"
+            value={latest.conforming30}
+            change={
+              latest.conforming30 != null && prev.conforming30 != null
+                ? latest.conforming30 - prev.conforming30
+                : null
+            }
+          />
+          <SummaryCard
+            title="15Y"
+            value={latest.conforming15}
+            change={
+              latest.conforming15 != null && prev.conforming15 != null
+                ? latest.conforming15 - prev.conforming15
+                : null
+            }
+          />
+          <SummaryCard
+            title="FHA"
+            value={latest.fha30}
+            change={latest.fha30 != null && prev.fha30 != null ? latest.fha30 - prev.fha30 : null}
+          />
+          <SummaryCard
+            title="VA"
+            value={latest.va30}
+            change={latest.va30 != null && prev.va30 != null ? latest.va30 - prev.va30 : null}
+          />
+          <SummaryCard
+            title="HELOC"
+            value={latest.heloc}
+            change={latest.heloc != null && prev.heloc != null ? latest.heloc - prev.heloc : null}
+          />
         </div>
 
         <h2 style={{ fontSize: 34, margin: "28px 0 14px" }}>Forward Signals</h2>
@@ -391,30 +395,26 @@ export default function Page() {
             marginBottom: 28,
           }}
         >
-          {summaryCard(
-            "Inflation YoY",
-            inflationValue,
-            inflationValue != null && inflationPrev != null ? inflationValue - inflationPrev : null
-          )}
-          {summaryCard(
-            "Fed Funds",
-            latest.fedFunds,
-            latest.fedFunds != null && prev.fedFunds != null ? latest.fedFunds - prev.fedFunds : null
-          )}
-          {summaryCard(
-            "Unemployment",
-            latest.unemployment,
-            latest.unemployment != null && prev.unemployment != null
-              ? latest.unemployment - prev.unemployment
-              : null
-          )}
-          {summaryCard(
-            "10Y Treasury",
-            latest.treasury10,
-            latest.treasury10 != null && prev.treasury10 != null
-              ? latest.treasury10 - prev.treasury10
-              : null
-          )}
+          <SummaryCard
+            title="CPI YoY"
+            value={forwardSignals?.inflation?.cpi_yoy}
+            change={null}
+          />
+          <SummaryCard
+            title="Core CPI YoY"
+            value={forwardSignals?.inflation?.core_cpi_yoy}
+            change={null}
+          />
+          <SummaryCard
+            title="Fed Funds"
+            value={forwardSignals?.fed?.fedFunds}
+            change={null}
+          />
+          <SummaryCard
+            title="Unemployment"
+            value={forwardSignals?.labor?.unemployment}
+            change={null}
+          />
         </div>
 
         <h2 style={{ fontSize: 34, margin: "28px 0 10px" }}>Treasury</h2>
@@ -505,10 +505,7 @@ export default function Page() {
                     ? "Improving"
                     : "Worsening",
               },
-              {
-  label: "MBS condition",
-  value: mbsCondition,
-},
+              { label: "MBS condition", value: mbsCondition },
             ]}
           />
         </div>
