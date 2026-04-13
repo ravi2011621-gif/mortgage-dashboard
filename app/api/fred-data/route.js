@@ -99,18 +99,14 @@ function toWeekly(series) {
 }
 
 function computeYoY(series) {
-  const byMonth = new Map(series.map((item) => [item.date.slice(0, 7), item.value]));
-
   return series
-    .map((item) => {
-      const d = new Date(item.date);
-      d.setUTCFullYear(d.getUTCFullYear() - 1);
-      const priorKey = d.toISOString().slice(0, 7);
-      const prior = byMonth.get(priorKey);
-      if (prior == null) return null;
+    .map((d, i, arr) => {
+      const prev = arr[i - 12];
+      if (!prev) return null;
+
       return {
-        date: item.date,
-        value: +(((item.value - prior) / prior) * 100).toFixed(2),
+        date: d.date,
+        value: +(((d.value - prev.value) / prev.value) * 100).toFixed(2),
       };
     })
     .filter(Boolean);
